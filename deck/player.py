@@ -5,6 +5,7 @@ from gi.repository import GLib, GObject, Gst
 Gst.init(None)
 
 import click
+import itertools
 import os
 from select import select
 import sys
@@ -25,6 +26,7 @@ class Player:
         self.loop = loop
         self.redis = Redis()
         self.restore_state()
+        self.spinner = itertools.cycle(['⠇', '⠏', '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'])
         self.original_terminal_state = termios.tcgetattr(sys.stdin.fileno())
         tty.setraw(sys.stdin.fileno())
 
@@ -35,9 +37,11 @@ class Player:
                 self.state = state
         elif message.type == Gst.MessageType.EOS:
             self.player.set_state(Gst.State.NULL)
+            self.state = Gst.State.NULL
             self.playing = False
         elif message.type == Gst.MessageType.ERROR:
             self.player.set_state(Gst.State.NULL)
+            self.state = Gst.State.NULL
             err, debug = message.parse_error()
             print('** error:', err, debug, end='\r\n')
             self.playing = False
@@ -59,9 +63,28 @@ class Player:
         self.play_track(track)
         self.quit()
 
+    # FIXME store played tracks (FIFO queue) in redis
+    def spin(self):
+        while True:
+            track = self.redis.lindex('queue', 0)
+            if track:
+                self.play_track(track.decode())
+            else:
+                char = self.wait_for_key(timeout=0.2)
+                if char:
+                    if ord(char) in [3, 28]:
+                        self.quit()
+                    elif char in ['q', 'Q']:
+                        self.adjust_volume(50)
+                    elif char in ['a', 'A']:
+                        self.adjust_volume(-50)
+                    elif char in ['m', 'M']:
+                        self.toggle_mute()
+                self.output_player_state()
+
     def play_track(self, track):
         if os.path.isfile(track):
-            print('-- now playing "%s"' % track, end='\r\n')
+            self.output_text_state('-- now playing "%s"' % track)
             file = os.path.realpath(track)
             self.playing = True
             self.player.set_property('uri', 'file://' + file)
@@ -87,7 +110,8 @@ class Player:
                         self.toggle_mute()
                 self.output_player_state()
         else:
-            print('** no file "%s"' % track, end='\r\n')
+            self.output_text_state('** no file "%s"' % track)
+        self.redis.lpop('queue')
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -151,6 +175,9 @@ class Player:
         self.player.set_property('mute', False)
         self.redis.set('muted', 0)
 
+    def output_text_state(self, text):
+        print(text.ljust(79), end='\r\n', flush=True)
+
     def output_player_state(self):
         # FIXME a terminal wider than 80 chars
         progress_bar_width = 44
@@ -159,11 +186,15 @@ class Player:
         duration = self.player.query_duration(Gst.Format.TIME)[1]
         position = self.player.query_position(Gst.Format.TIME)[1]
         if duration < 0 or position < 0:
-            # unintialised state, don't report
-            return
-
-        progress = int((position / duration) * progress_bar_width)
-        progress_bar = (('_' * (progress-1)) + '|').ljust(progress_bar_width, '_')
+            # unintialised state, no times
+            duration_time = '--:--'
+            position_time = '--:--'
+            progress_bar = '_' * progress_bar_width
+        else:
+            progress = int((position / duration) * progress_bar_width)
+            progress_bar = (('_' * (progress-1)) + '|').ljust(progress_bar_width, '_')
+            position_time = self.minutes_seconds(position)
+            duration_time = self.minutes_seconds(duration)
 
         volume_bar_width = 10
         volume = int(round(self.player.get_property('volume'), 1) * 10)
@@ -180,6 +211,8 @@ class Player:
             state = '→'
         elif self.state == 'seek_backwards':
             state = '←'
+        elif self.state == Gst.State.NULL:
+            state = next(self.spinner)
         else:
             state = '?'
 
@@ -189,9 +222,9 @@ class Player:
             "  %s  [%s]   %s [%s] %s" % (
                 state,
                 volume_bar,
-                self.minutes_seconds(position),
+                position_time,
                 progress_bar,
-                self.minutes_seconds(duration),
+                duration_time,
             ),
             end='\r',
             flush=True,
@@ -233,4 +266,11 @@ def play(file):
     loop = GLib.MainLoop()
     mainclass = Player(loop=loop)
     _thread.start_new_thread(mainclass.play, (file,))
+    loop.run()
+
+@click.command()
+def spin():
+    loop = GLib.MainLoop()
+    mainclass = Player(loop=loop)
+    _thread.start_new_thread(mainclass.spin, ())
     loop.run()

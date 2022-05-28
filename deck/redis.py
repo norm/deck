@@ -14,3 +14,9 @@ class Redis:
 
     def set(self, key, value):
         return self.redis.set(self.key(key), value)
+
+    def lindex(self, key, index):
+        return self.redis.lindex(self.key(key), index)
+
+    def lpop(self, key):
+        return self.redis.lpop(self.key(key))
