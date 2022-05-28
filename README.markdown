@@ -39,3 +39,21 @@ The whiteboard sketch level description is:
     * cloud backups of music files, a centralised copy of the database
     * a complete local copy and player running on a raspberry pi/Mac
     * iOS app player that can sync subsets of the library for offline playing
+
+
+## Raspberry Pi requirements
+
+Minimum install to get music files playing on Raspberry Pi (raspbian):
+
+    sudo apt-get -y install \
+        gstreamer1.0-alsa \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad \
+        gstreamer1.0-plugins-ugly \
+        python3-gst-1.0
+
+
+## Usage
+
+    sudo pip install .
+    deck play track.mp3
