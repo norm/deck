@@ -76,6 +76,12 @@ class Player:
                         self.relative_seek(-15)
                     elif char in ['l', 'L']:
                         self.relative_seek(15)
+                    elif char in ['q', 'Q']:
+                        self.adjust_volume(50)
+                    elif char in ['a', 'A']:
+                        self.adjust_volume(-50)
+                    elif char in ['m', 'M']:
+                        self.toggle_mute()
                 self.output_player_state()
         else:
             print('** no file "%s"' % track, end='\r\n')
@@ -117,9 +123,31 @@ class Player:
             # indicator to remain on screen
             time.sleep(0.2)
 
+    def adjust_volume(self, adjustment):
+        volume = (self.player.get_property('volume') * 1000) + adjustment
+        self.set_volume(volume)
+
+    def set_volume(self, volume):
+        volume = min(max(int(volume), 0), 1000)
+        actual = volume / 1000
+        self.player.set_property('volume', actual)
+        self.unmute()
+
+    def toggle_mute(self):
+        if self.player.get_property('mute'):
+            self.unmute()
+        else:
+            self.mute()
+
+    def mute(self):
+        self.player.set_property('mute', True)
+
+    def unmute(self):
+        self.player.set_property('mute', False)
+
     def output_player_state(self):
         # FIXME a terminal wider than 80 chars
-        progress_bar_width = 60
+        progress_bar_width = 44
 
         # FIXME a track over an hour long
         duration = self.player.query_duration(Gst.Format.TIME)[1]
@@ -129,7 +157,14 @@ class Player:
             return
 
         progress = int((position / duration) * progress_bar_width)
-        progress_bar = ('_' * (progress-1)) + '|'
+        progress_bar = (('_' * (progress-1)) + '|').ljust(progress_bar_width, '_')
+
+        volume_bar_width = 10
+        volume = int(round(self.player.get_property('volume'), 1) * 10)
+        volume_bar = ('=' * volume).ljust(volume_bar_width)
+
+        if self.player.get_property('mute'):
+            volume_bar = volume_bar[0:3] + ' XX ' + volume_bar[7:10]
 
         if self.state == Gst.State.PLAYING:
             state = '▶'
@@ -143,12 +178,13 @@ class Player:
             state = '?'
 
         # 12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        #   ▶  00:07 [__________|________________________________________________] 00:31
+        #   ▶  [==========]   00:04 [______|_____________________________________] 00:31
         print(
-            "  %s  %s [%s] %s" % (
+            "  %s  [%s]   %s [%s] %s" % (
                 state,
+                volume_bar,
                 self.minutes_seconds(position),
-                progress_bar.ljust(progress_bar_width, '_'),
+                progress_bar,
                 self.minutes_seconds(duration),
             ),
             end='\r',
