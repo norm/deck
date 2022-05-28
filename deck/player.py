@@ -6,9 +6,12 @@ Gst.init(None)
 
 import click
 import os
+from select import select
 import sys
+import termios
 import _thread
 import time
+import tty
 
 
 class Player:
@@ -19,6 +22,8 @@ class Player:
         self.bus.connect('message', self.on_message)
         self.state = Gst.State.NULL
         self.loop = loop
+        self.original_terminal_state = termios.tcgetattr(sys.stdin.fileno())
+        tty.setraw(sys.stdin.fileno())
 
     def on_message(self, bus, message):
         if message.type == Gst.MessageType.STATE_CHANGED:
@@ -31,7 +36,7 @@ class Player:
         elif message.type == Gst.MessageType.ERROR:
             self.player.set_state(Gst.State.NULL)
             err, debug = message.parse_error()
-            print('** error:', err, debug)
+            print('** error:', err, debug, end='\r\n')
             self.playing = False
         elif message.type in [
             Gst.MessageType.ASYNC_DONE,
@@ -44,7 +49,7 @@ class Player:
         ]:
             pass
         else:
-            print("** unknown message type", message.type)
+            print("** unknown message type", message.type, end='\r\n')
 
     def play(self, track):
         self.play_track(track)
@@ -52,16 +57,37 @@ class Player:
 
     def play_track(self, track):
         if os.path.isfile(track):
-            print('-- now playing "%s"' % track)
+            print('-- now playing "%s"' % track, end='\r\n')
             file = os.path.realpath(track)
             self.playing = True
             self.player.set_property('uri', 'file://' + file)
             self.player.set_state(Gst.State.PLAYING)
             while self.playing:
-                time.sleep(1)
+                # check for keypress with 1/10th of a second timeout
+                # so the progress bar gets refreshed regularly
+                char = self.wait_for_key(timeout=0.1)
+                if char:
+                    if ord(char) in [3, 28]:
+                        self.quit()
+                    elif ord(char) == 32:
+                        self.pause_or_resume()
                 self.output_player_state()
         else:
-            print('** no file "%s"' % track)
+            print('** no file "%s"' % track, end='\r\n')
+
+    def wait_for_key(self, timeout=1):
+        char = None
+        ready, _, _ = select([sys.stdin], [], [], timeout)
+        for stream in ready:
+            if stream == sys.stdin:
+                char = sys.stdin.read(1)
+        return char
+
+    def pause_or_resume(self):
+        if self.state == Gst.State.PLAYING:
+            self.player.set_state(Gst.State.PAUSED)
+        elif self.state == Gst.State.PAUSED:
+            self.player.set_state(Gst.State.PLAYING)
 
     def output_player_state(self):
         # FIXME a terminal wider than 80 chars
@@ -77,10 +103,18 @@ class Player:
         progress = int((position / duration) * progress_bar_width)
         progress_bar = ('_' * (progress-1)) + '|'
 
+        if self.state == Gst.State.PLAYING:
+            state = '▶'
+        elif self.state == Gst.State.PAUSED:
+            state = '‖'
+        else:
+            state = '?'
+
         # 12345678901234567890123456789012345678901234567890123456789012345678901234567890
         #   ▶  00:07 [__________|________________________________________________] 00:31
         print(
-            "  ▶  %s [%s] %s" % (
+            "  %s  %s [%s] %s" % (
+                state,
                 self.minutes_seconds(position),
                 progress_bar.ljust(progress_bar_width, '_'),
                 self.minutes_seconds(duration),
@@ -99,6 +133,12 @@ class Player:
             return "%i:%02i:%02i" %(h,m,s)
 
     def quit(self):
+        termios.tcsetattr(
+            sys.stdin.fileno(),
+            termios.TCSANOW,
+            self.original_terminal_state,
+        )
+        print()
         self.loop.quit()
 
 @click.command()
