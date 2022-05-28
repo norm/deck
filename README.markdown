@@ -50,7 +50,8 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
         gstreamer1.0-plugins-good \
         gstreamer1.0-plugins-bad \
         gstreamer1.0-plugins-ugly \
-        python3-gst-1.0
+        python3-gst-1.0 \
+        redis
 
 
 ## Usage

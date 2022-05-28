@@ -12,6 +12,7 @@ import termios
 import _thread
 import time
 import tty
+from deck.redis import Redis
 
 
 class Player:
@@ -22,6 +23,8 @@ class Player:
         self.bus.connect('message', self.on_message)
         self.state = Gst.State.NULL
         self.loop = loop
+        self.redis = Redis()
+        self.restore_state()
         self.original_terminal_state = termios.tcgetattr(sys.stdin.fileno())
         tty.setraw(sys.stdin.fileno())
 
@@ -131,6 +134,7 @@ class Player:
         volume = min(max(int(volume), 0), 1000)
         actual = volume / 1000
         self.player.set_property('volume', actual)
+        self.redis.set('volume', volume)
         self.unmute()
 
     def toggle_mute(self):
@@ -141,9 +145,11 @@ class Player:
 
     def mute(self):
         self.player.set_property('mute', True)
+        self.redis.set('muted', 1)
 
     def unmute(self):
         self.player.set_property('mute', False)
+        self.redis.set('muted', 0)
 
     def output_player_state(self):
         # FIXME a terminal wider than 80 chars
@@ -190,6 +196,18 @@ class Player:
             end='\r',
             flush=True,
         )
+
+    def restore_state(self):
+        mute = self.redis.get('muted')
+        volume = self.redis.get('volume')
+        if volume:
+            self.set_volume(volume)
+        else:
+            self.set_volume(1000)
+        if int(mute) == 1:
+            self.mute()
+        else:
+            self.unmute()
 
     def minutes_seconds(self, t):
         s,ns = divmod(t, 1000000000)
