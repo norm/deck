@@ -43,6 +43,7 @@ class Player:
             Gst.MessageType.DURATION_CHANGED,
             Gst.MessageType.LATENCY,
             Gst.MessageType.NEW_CLOCK,
+            Gst.MessageType.RESET_TIME,
             Gst.MessageType.STREAM_START,
             Gst.MessageType.STREAM_STATUS,
             Gst.MessageType.TAG,
@@ -71,6 +72,10 @@ class Player:
                         self.quit()
                     elif ord(char) == 32:
                         self.pause_or_resume()
+                    elif char in ['j', 'J']:
+                        self.relative_seek(-15)
+                    elif char in ['l', 'L']:
+                        self.relative_seek(15)
                 self.output_player_state()
         else:
             print('** no file "%s"' % track, end='\r\n')
@@ -84,10 +89,33 @@ class Player:
         return char
 
     def pause_or_resume(self):
-        if self.state == Gst.State.PLAYING:
+        if self.state in [Gst.State.PLAYING, 'seek_forwards', 'seek_backwards']:
             self.player.set_state(Gst.State.PAUSED)
+            self.relative_seek(-0.05, show_state=False)
         elif self.state == Gst.State.PAUSED:
             self.player.set_state(Gst.State.PLAYING)
+
+    def relative_seek(self, amount=0, show_state=True):
+        position = self.player.query_position(Gst.Format.TIME)[1]
+        duration = self.player.query_duration(Gst.Format.TIME)[1]
+        seek = position + (amount * 1000000000)
+
+        if show_state:
+            self.state = 'seek_forwards'
+            if amount < 0:
+                self.state = 'seek_backwards'
+            self.output_player_state()
+
+        self.player.seek_simple(
+            Gst.Format.TIME,
+            Gst.SeekFlags.FLUSH,
+            min(max(seek, 0), duration),
+        )
+
+        if show_state:
+            # allow a small amount of time for the seek
+            # indicator to remain on screen
+            time.sleep(0.2)
 
     def output_player_state(self):
         # FIXME a terminal wider than 80 chars
@@ -107,6 +135,10 @@ class Player:
             state = '▶'
         elif self.state == Gst.State.PAUSED:
             state = '‖'
+        elif self.state == 'seek_forwards':
+            state = '→'
+        elif self.state == 'seek_backwards':
+            state = '←'
         else:
             state = '?'
 
