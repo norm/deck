@@ -12,12 +12,13 @@ import time
 
 
 class Player:
-    def __init__(self):
+    def __init__(self, loop):
         self.player = Gst.ElementFactory.make('playbin', 'player')
         self.bus = self.player.get_bus()
         self.bus.add_signal_watch()
         self.bus.connect('message', self.on_message)
         self.state = Gst.State.NULL
+        self.loop = loop
 
     def on_message(self, bus, message):
         if message.type == Gst.MessageType.STATE_CHANGED:
@@ -45,9 +46,9 @@ class Player:
         else:
             print("** unknown message type", message.type)
 
-    def play(self, loop, track):
+    def play(self, track):
         self.play_track(track)
-        loop.quit()
+        self.quit()
 
     def play_track(self, track):
         if os.path.isfile(track):
@@ -97,11 +98,13 @@ class Player:
             h,m = divmod(m, 60)
             return "%i:%02i:%02i" %(h,m,s)
 
+    def quit(self):
+        self.loop.quit()
 
 @click.command()
 @click.argument('file')
 def play(file):
-    mainclass = Player()
     loop = GLib.MainLoop()
-    _thread.start_new_thread(mainclass.play, (loop, file))
+    mainclass = Player(loop=loop)
+    _thread.start_new_thread(mainclass.play, (file,))
     loop.run()
