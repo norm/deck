@@ -296,6 +296,7 @@ class Player:
         print()
         self.loop.quit()
 
+
 @click.command()
 @click.argument('file')
 def play(file):
@@ -318,3 +319,29 @@ def queue(tracks):
     redis = Redis()
     for file in tracks:
         redis.rpush('queue', os.path.realpath(file))
+
+
+@click.command()
+@click.option('--repeat', default=0, show_default=True)
+def show_queue(repeat):
+    redis = Redis()
+    for track in redis.lrange('queue', 0, -1):
+        print(track.decode())
+    while repeat:
+        time.sleep(repeat)
+        os.system('clear')
+        for track in redis.lrange('queue', 0, -1):
+            print(track.decode())
+
+
+@click.command()
+@click.option('--repeat', default=0, show_default=True)
+def show_previous(repeat):
+    redis = Redis()
+    for track in redis.lrange('recently_played', 0, -1):
+        print(track.decode())
+    while repeat:
+        time.sleep(repeat)
+        os.system('clear')
+        for track in redis.lrange('recently_played', 0, -1):
+            print(track.decode())

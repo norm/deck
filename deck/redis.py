@@ -24,6 +24,9 @@ class Redis:
     def lpush(self, key, value):
         return self.redis.lpush(self.key(key), value)
 
+    def lrange(self, key, lower, upper):
+        return self.redis.lrange(self.key(key), lower, upper)
+
     def ltrim(self, key, lower, upper):
         return self.redis.ltrim(self.key(key), lower, upper)
 
