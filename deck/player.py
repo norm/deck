@@ -86,7 +86,8 @@ class Player:
                             self.adjust_volume(-50)
                         elif char in ['m', 'M']:
                             self.toggle_mute()
-                    self.output_player_state()
+            self.check_for_command()
+            self.output_player_state()
 
     def play_track(self, track):
         if os.path.isfile(track):
@@ -122,6 +123,7 @@ class Player:
                         self.previous_track()
                     elif ord(char) in range(48, 58):
                         self.set_position(char)
+                self.check_for_command()
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
@@ -137,6 +139,14 @@ class Player:
             if stream == sys.stdin:
                 char = sys.stdin.read(1)
         return char
+
+    def check_for_command(self):
+        command = self.redis.getdel('command')
+        if command:
+            if command.decode() == 'pause':
+                self.pause_or_resume()
+            else:
+                print('\r\n** unknown command received:', command, end='\r\n')
 
     def pause_or_resume(self):
         if self.state in [Gst.State.PLAYING, 'seek_forwards', 'seek_backwards']:
@@ -364,3 +374,9 @@ def show_previous(repeat):
         os.system('clear')
         for track in redis.lrange('recently_played', 0, -1):
             print(track.decode())
+
+
+@click.command()
+def pause():
+    redis = Redis()
+    redis.set('command', 'pause')

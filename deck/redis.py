@@ -12,8 +12,13 @@ class Redis:
     def get(self, key):
         return self.redis.get(self.key(key))
 
-    def set(self, key, value):
-        return self.redis.set(self.key(key), value)
+    def getdel(self, key):
+        try:
+            value = self.redis.getdel(self.key(key))
+        except redis.exceptions.ResponseError:
+            value = self.redis.get(self.key(key))
+            self.redis.delete(self.key(key))
+        return value
 
     def lindex(self, key, index):
         return self.redis.lindex(self.key(key), index)
@@ -32,3 +37,6 @@ class Redis:
 
     def rpush(self, key, value):
         return self.redis.rpush(self.key(key), value)
+
+    def set(self, key, value):
+        return self.redis.set(self.key(key), value)
