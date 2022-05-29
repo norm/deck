@@ -63,6 +63,9 @@ class Player:
 
     # FIXME store played tracks (FIFO queue) in redis
     def spin(self):
+        print('[Space]:pause/play  [L]:skip fwd    [J]:skip back  [1234567890]:position', end='\r\n')
+        print('[N]:next track      [P]:prev track  [S]:stop       [^C]:quit', end='\r\n')
+        print('[Q/+]:vol up        [A/-]:vol down  [M]:mute', end='\r\n\n')
         while True:
             if self.state == 'stopped':
                 char = self.wait_for_key(timeout=0.2)
