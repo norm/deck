@@ -9,6 +9,7 @@ from deck.player import (
     show_previous,
     show_queue,
     spin,
+    stop,
 )
 
 
@@ -25,6 +26,7 @@ cli.add_command(show_playing)
 cli.add_command(show_previous)
 cli.add_command(show_queue)
 cli.add_command(spin)
+cli.add_command(stop)
 
 
 if __name__ == '__main__':
