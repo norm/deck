@@ -113,11 +113,17 @@ class Player:
                         self.toggle_mute()
                     elif char in ['s', 'S']:
                         self.stop()
+                    elif char in ['n', 'N']:
+                        self.next_track()
+                    elif char in ['p', 'P']:
+                        self.previous_track()
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
-        if self.state != 'stopped':
+        if self.state not in ['stopped', 'previous']:
             self.redis.lpop('queue')
+            self.redis.lpush('recently_played', track)
+            self.redis.ltrim('recently_played', 0, 99)
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -137,6 +143,19 @@ class Player:
     def stop(self):
         self.player.set_state(Gst.State.NULL)
         self.state = 'stopped'
+        self.playing = False
+
+    def next_track(self):
+        self.player_state(Gst.State.PAUSED)
+        self.player_state(Gst.State.NULL)
+        self.playing = False
+
+    def previous_track(self):
+        track = self.redis.lpop('recently_played')
+        self.redis.lpush('queue', track)
+        self.player_state(Gst.State.PAUSED)
+        self.player.set_state(Gst.State.NULL)
+        self.state = 'previous'
         self.playing = False
 
     def player_state(self, state):

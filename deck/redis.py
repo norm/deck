@@ -21,5 +21,11 @@ class Redis:
     def lpop(self, key):
         return self.redis.lpop(self.key(key))
 
+    def lpush(self, key, value):
+        return self.redis.lpush(self.key(key), value)
+
+    def ltrim(self, key, lower, upper):
+        return self.redis.ltrim(self.key(key), lower, upper)
+
     def rpush(self, key, value):
         return self.redis.rpush(self.key(key), value)
