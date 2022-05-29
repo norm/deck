@@ -74,6 +74,7 @@ class Player:
             else:
                 track = self.redis.lindex('queue', 0)
                 if track:
+                    self.redis.lpop('queue')
                     self.play_track(track.decode())
                 else:
                     char = self.wait_for_key(timeout=0.2)
@@ -91,9 +92,9 @@ class Player:
 
     def play_track(self, track):
         if os.path.isfile(track):
+            self.redis.set('current_track', track)
             self.output_text_state('-- now playing "%s"' % track)
-            file = os.path.realpath(track)
-            self.player.set_property('uri', 'file://' + file)
+            self.player.set_property('uri', 'file://' + track)
             self.player_state(Gst.State.PLAYING)
             self.playing = True
             while self.playing:
@@ -128,9 +129,9 @@ class Player:
         else:
             self.output_text_state('** no file "%s"' % track)
         if self.state not in ['stopped', 'previous']:
-            self.redis.lpop('queue')
             self.redis.lpush('recently_played', track)
             self.redis.ltrim('recently_played', 0, 99)
+            self.redis.delete('current_track')
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -311,6 +312,9 @@ class Player:
                 self.mute()
             else:
                 self.unmute()
+        was_playing = self.redis.get('current_track')
+        if was_playing:
+            self.redis.lpush('queue', was_playing.decode())
 
     def minutes_seconds(self, t):
         s,ns = divmod(t, 1000000000)
@@ -364,26 +368,35 @@ def queue(clear, tracks):
 def show_queue(repeat):
     redis = Redis()
     for track in redis.lrange('queue', 0, -1):
-        print(track.decode())
+        print('  ', track.decode())
     while repeat:
         time.sleep(repeat)
         os.system('clear')
         for track in redis.lrange('queue', 0, -1):
-            print(track.decode())
+            print('  ', track.decode())
 
 
 @click.command()
 @click.option('--repeat', default=0, show_default=True)
 def show_previous(repeat):
     redis = Redis()
-    for track in redis.lrange('recently_played', 0, -1):
-        print(track.decode())
+    for track in reversed(redis.lrange('recently_played', 0, -1)):
+        print('  ', track.decode())
     while repeat:
         time.sleep(repeat)
         os.system('clear')
-        for track in redis.lrange('recently_played', 0, -1):
-            print(track.decode())
+        for track in reversed(redis.lrange('recently_played', 0, -1)):
+            print('  ', track.decode())
 
+
+@click.command()
+def show_playing():
+    redis = Redis()
+    track = redis.get('current_track')
+    if track:
+        print('**', track.decode())
+    else:
+        print('** Nothing playing.')
 
 @click.command()
 def pause():

@@ -9,6 +9,9 @@ class Redis:
     def key(self, key):
         return '%s:%s' % (self.namespace, key)
 
+    def delete(self, key):
+        return self.redis.delete(self.key(key))
+
     def get(self, key):
         return self.redis.get(self.key(key))
 

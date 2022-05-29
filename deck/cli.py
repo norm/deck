@@ -5,6 +5,7 @@ from deck.player import (
     play,
     previous_track,
     queue,
+    show_playing,
     show_previous,
     show_queue,
     spin,
@@ -20,6 +21,7 @@ cli.add_command(next_track, name='next')
 cli.add_command(play)
 cli.add_command(previous_track, name='previous')
 cli.add_command(queue)
+cli.add_command(show_playing)
 cli.add_command(show_previous)
 cli.add_command(show_queue)
 cli.add_command(spin)
