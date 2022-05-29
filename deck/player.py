@@ -36,12 +36,10 @@ class Player:
             if state != self.state:
                 self.state = state
         elif message.type == Gst.MessageType.EOS:
-            self.player.set_state(Gst.State.NULL)
-            self.state = Gst.State.NULL
+            self.player_state(Gst.State.NULL)
             self.playing = False
         elif message.type == Gst.MessageType.ERROR:
-            self.player.set_state(Gst.State.NULL)
-            self.state = Gst.State.NULL
+            self.player_state(Gst.State.NULL)
             err, debug = message.parse_error()
             print('** error:', err, debug, end='\r\n')
             self.playing = False
@@ -66,29 +64,34 @@ class Player:
     # FIXME store played tracks (FIFO queue) in redis
     def spin(self):
         while True:
-            track = self.redis.lindex('queue', 0)
-            if track:
-                self.play_track(track.decode())
-            else:
+            if self.state == 'stopped':
                 char = self.wait_for_key(timeout=0.2)
-                if char:
-                    if ord(char) in [3, 28]:
-                        self.quit()
-                    elif char in ['q', 'Q']:
-                        self.adjust_volume(50)
-                    elif char in ['a', 'A']:
-                        self.adjust_volume(-50)
-                    elif char in ['m', 'M']:
-                        self.toggle_mute()
-                self.output_player_state()
+                if char and ord(char) == 32:
+                    self.player_state(Gst.State.NULL)
+            else:
+                track = self.redis.lindex('queue', 0)
+                if track:
+                    self.play_track(track.decode())
+                else:
+                    char = self.wait_for_key(timeout=0.2)
+                    if char:
+                        if ord(char) in [3, 28]:
+                            self.quit()
+                        elif char in ['q', 'Q']:
+                            self.adjust_volume(50)
+                        elif char in ['a', 'A']:
+                            self.adjust_volume(-50)
+                        elif char in ['m', 'M']:
+                            self.toggle_mute()
+                    self.output_player_state()
 
     def play_track(self, track):
         if os.path.isfile(track):
             self.output_text_state('-- now playing "%s"' % track)
             file = os.path.realpath(track)
-            self.playing = True
             self.player.set_property('uri', 'file://' + file)
-            self.player.set_state(Gst.State.PLAYING)
+            self.player_state(Gst.State.PLAYING)
+            self.playing = True
             while self.playing:
                 # check for keypress with 1/10th of a second timeout
                 # so the progress bar gets refreshed regularly
@@ -108,10 +111,13 @@ class Player:
                         self.adjust_volume(-50)
                     elif char in ['m', 'M']:
                         self.toggle_mute()
+                    elif char in ['s', 'S']:
+                        self.stop()
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
-        self.redis.lpop('queue')
+        if self.state != 'stopped':
+            self.redis.lpop('queue')
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -123,10 +129,19 @@ class Player:
 
     def pause_or_resume(self):
         if self.state in [Gst.State.PLAYING, 'seek_forwards', 'seek_backwards']:
-            self.player.set_state(Gst.State.PAUSED)
+            self.player_state(Gst.State.PAUSED)
             self.relative_seek(-0.05, show_state=False)
-        elif self.state == Gst.State.PAUSED:
-            self.player.set_state(Gst.State.PLAYING)
+        elif self.state in [Gst.State.PAUSED, 'stopped']:
+            self.player_state(Gst.State.PLAYING)
+
+    def stop(self):
+        self.player.set_state(Gst.State.NULL)
+        self.state = 'stopped'
+        self.playing = False
+
+    def player_state(self, state):
+        self.player.set_state(state)
+        self.state = state
 
     def relative_seek(self, amount=0, show_state=True):
         position = self.player.query_position(Gst.Format.TIME)[1]
@@ -211,6 +226,8 @@ class Player:
             state = '→'
         elif self.state == 'seek_backwards':
             state = '←'
+        elif self.state == 'stopped':
+            state = '◼'
         elif self.state == Gst.State.NULL:
             state = next(self.spinner)
         else:
