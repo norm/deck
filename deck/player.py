@@ -343,11 +343,15 @@ def spin():
 
 
 @click.command()
+@click.option('--clear', is_flag=True)
 @click.argument('tracks', nargs=-1)
-def queue(tracks):
+def queue(clear, tracks):
     redis = Redis()
-    for file in tracks:
-        redis.rpush('queue', os.path.realpath(file))
+    if clear:
+        redis.ltrim('queue', 1, 0)
+    else:
+        for file in tracks:
+            redis.rpush('queue', os.path.realpath(file))
 
 
 @click.command()
