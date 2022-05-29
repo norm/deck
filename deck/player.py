@@ -300,16 +300,17 @@ class Player:
         )
 
     def restore_state(self):
-        mute = self.redis.get('muted')
         volume = self.redis.get('volume')
         if volume:
             self.set_volume(volume)
         else:
             self.set_volume(1000)
-        if int(mute) == 1:
-            self.mute()
-        else:
-            self.unmute()
+        mute = self.redis.get('muted')
+        if mute:
+            if int(mute) == 1:
+                self.mute()
+            else:
+                self.unmute()
 
     def minutes_seconds(self, t):
         s,ns = divmod(t, 1000000000)
