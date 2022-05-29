@@ -117,6 +117,8 @@ class Player:
                         self.next_track()
                     elif char in ['p', 'P']:
                         self.previous_track()
+                    elif ord(char) in range(48, 58):
+                        self.set_position(char)
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
@@ -183,6 +185,18 @@ class Player:
             # allow a small amount of time for the seek
             # indicator to remain on screen
             time.sleep(0.2)
+
+    def set_position(self, position):
+        position = int(position) - 1
+        if position < 0:
+            position = 9
+        duration = self.player.query_duration(Gst.Format.TIME)[1]
+        seek = 0 + (duration * (position / 10))
+        self.player.seek_simple(
+            Gst.Format.TIME,
+            Gst.SeekFlags.FLUSH,
+            min(max(seek, 0), duration),
+        )
 
     def adjust_volume(self, adjustment):
         volume = (self.player.get_property('volume') * 1000) + adjustment
