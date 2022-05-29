@@ -63,3 +63,6 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
 
     # to play indefinitely from the redis queue
     deck spin
+
+    # to queue up music
+    deck queue track.mp3 [...]

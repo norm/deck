@@ -20,3 +20,6 @@ class Redis:
 
     def lpop(self, key):
         return self.redis.lpop(self.key(key))
+
+    def rpush(self, key, value):
+        return self.redis.rpush(self.key(key), value)

@@ -274,3 +274,11 @@ def spin():
     mainclass = Player(loop=loop)
     _thread.start_new_thread(mainclass.spin, ())
     loop.run()
+
+
+@click.command()
+@click.argument('tracks', nargs=-1)
+def queue(tracks):
+    redis = Redis()
+    for file in tracks:
+        redis.rpush('queue', os.path.realpath(file))

@@ -1,5 +1,5 @@
 import click
-from deck.player import play, spin
+from deck.player import play, spin, queue
 
 
 @click.group()
@@ -8,6 +8,7 @@ def cli():
 
 cli.add_command(play)
 cli.add_command(spin)
+cli.add_command(queue)
 
 
 if __name__ == '__main__':
