@@ -145,6 +145,10 @@ class Player:
         if command:
             if command.decode() == 'pause':
                 self.pause_or_resume()
+            elif command.decode() == 'next':
+                self.next_track()
+            elif command.decode() == 'previous':
+                self.previous_track()
             else:
                 print('\r\n** unknown command received:', command, end='\r\n')
 
@@ -384,3 +388,15 @@ def show_previous(repeat):
 def pause():
     redis = Redis()
     redis.set('command', 'pause')
+
+
+@click.command()
+def next_track():
+    redis = Redis()
+    redis.set('command', 'next')
+
+
+@click.command()
+def previous_track():
+    redis = Redis()
+    redis.set('command', 'previous')
