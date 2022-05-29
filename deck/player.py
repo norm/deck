@@ -141,6 +141,7 @@ class Player:
             self.relative_seek(-0.05, show_state=False)
         elif self.state in [Gst.State.PAUSED, 'stopped']:
             self.player_state(Gst.State.PLAYING)
+        time.sleep(0.1)
 
     def stop(self):
         self.player.set_state(Gst.State.NULL)
@@ -197,6 +198,7 @@ class Player:
             Gst.SeekFlags.FLUSH,
             min(max(seek, 0), duration),
         )
+        time.sleep(0.1)
 
     def adjust_volume(self, adjustment):
         volume = (self.player.get_property('volume') * 1000) + adjustment
