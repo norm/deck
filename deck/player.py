@@ -105,9 +105,9 @@ class Player:
                         self.relative_seek(-15)
                     elif char in ['l', 'L']:
                         self.relative_seek(15)
-                    elif char in ['q', 'Q']:
+                    elif char in ['q', 'Q', '=', '+']:
                         self.adjust_volume(50)
-                    elif char in ['a', 'A']:
+                    elif char in ['a', 'A', '-', '_']:
                         self.adjust_volume(-50)
                     elif char in ['m', 'M']:
                         self.toggle_mute()
