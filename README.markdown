@@ -76,3 +76,17 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
 
     # to replace the entire queue
     deck queue --clear track.mp3 [...]
+
+    # to play something then return to the queue
+    deck interrupt track.mp3
+
+    # controls
+    deck pause
+    deck next
+    deck previous
+    deck stop
+
+    # show the queue
+    deck show-previous
+    deck show-playing
+    deck show-queue
