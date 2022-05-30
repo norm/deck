@@ -89,7 +89,8 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
     deck previous
     deck stop
 
-    # show the queue
-    deck show-previous
-    deck show-playing
-    deck show-queue
+    # monitor previous, current, and queued tracks
+    deck show-previous [--repeat <secs>]
+    deck show-playing [--repeat <secs>]
+    deck show-queue [--repeat <secs>]
+    deck show-summary [--repeat <secs>]

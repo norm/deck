@@ -428,44 +428,75 @@ def queue(clear, prepend, remove, tracks):
                 )
 
 
+def show_queued_tracks(count=-1):
+    redis = Redis()
+    for entry in redis.lrange('queue', 0, count-1):
+        track = json.loads(entry.decode())
+        print(format_track_text(track, flag=' '))
+
+
 @click.command()
 @click.option('--repeat', default=0, show_default=True)
 def show_queue(repeat):
-    redis = Redis()
-    for entry in redis.lrange('queue', 0, -1):
-        track = json.loads(entry.decode())
-        print(format_track_text(track))
+    show_queued_tracks()
     while repeat:
         time.sleep(repeat)
         os.system('clear')
-        for entry in redis.lrange('queue', 0, -1):
-            track = json.loads(entry.decode())
-            print(format_track_text(track))
+        show_queued_tracks()
+
+
+def show_previous_tracks(count=-1):
+    redis = Redis()
+    for entry in reversed(redis.lrange('recently_played', 0, count-1)):
+        track = json.loads(entry.decode())
+        print(format_track_text(track, flag=' '))
 
 
 @click.command()
 @click.option('--repeat', default=0, show_default=True)
 def show_previous(repeat):
-    redis = Redis()
-    for entry in reversed(redis.lrange('recently_played', 0, -1)):
-        track = json.loads(entry.decode())
-        print(format_track_text(track))
+    show_previous_tracks()
     while repeat:
         time.sleep(repeat)
         os.system('clear')
-        for entry in reversed(redis.lrange('recently_played', 0, -1)):
-            track = json.loads(entry.decode())
-            print(format_track_text(track))
+        show_previous_tracks()
 
 
-@click.command()
-def show_playing():
+def show_current_track():
     redis = Redis()
     track = redis.get('current_track')
     if track:
         print(format_track_text(json.loads(track.decode())))
     else:
         print('◼ [nothing playing]')
+
+
+@click.command()
+def show_playing():
+    show_current_track()
+
+
+@click.command()
+@click.option('--repeat', default=0, show_default=True)
+def show_summary(repeat):
+    try:
+        height = os.get_terminal_size()[1]
+    except OSError:
+        height = 24
+    show_previous_tracks(int(height/2) - 2)
+    show_current_track()
+    show_queued_tracks(int(height/2))
+    while repeat:
+        time.sleep(repeat)
+        os.system('clear')
+        try:
+            height = os.get_terminal_size()[1]
+        except OSError:
+            height = 24
+        show_previous_tracks(int(height/2) - 2)
+        show_current_track()
+        show_queued_tracks(int(height/2))
+
 
 @click.command()
 def pause():
