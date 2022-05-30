@@ -177,13 +177,11 @@ class Player:
         time.sleep(0.1)
 
     def stop(self):
-        self.player.set_state(Gst.State.NULL)
-        self.state = 'stopped'
+        self.player_state(Gst.State.NULL, 'stopped')
         self.playing = False
 
     def skip(self):
-        self.player.set_state(Gst.State.NULL)
-        self.state = 'skipped'
+        self.player_state(Gst.State.NULL, 'skipped')
         self.playing = False
 
     def next_track(self):
@@ -195,13 +193,21 @@ class Player:
         track = self.redis.lpop('recently_played')
         self.redis.lpush('queue', track)
         self.player_state(Gst.State.PAUSED)
-        self.player.set_state(Gst.State.NULL)
-        self.state = 'previous'
+        self.player_state(Gst.State.NULL, 'previous')
         self.playing = False
 
-    def player_state(self, state):
+    def player_state(self, state, store=None):
         self.player.set_state(state)
-        self.state = state
+        if not store:
+            store = state
+        self.state = store
+        if state == Gst.State.PLAYING:
+            store = 'playing'
+        if state == Gst.State.PAUSED:
+            store = 'paused'
+        if state == Gst.State.NULL:
+            store = 'stopped'
+        self.redis.set('state', store)
 
     def relative_seek(self, amount=0, show_state=True):
         position = self.player.query_position(Gst.Format.TIME)[1]
@@ -355,15 +361,34 @@ class Player:
         self.loop.quit()
 
 
-def format_track_text(track, flag=' '):
-    return '%s %-26s | %02d/%02d %-20s | %-16s' % (
-        flag,
-        track['tags']['title'][0:26],
-        int(track['tags']['track']),
-        int(track['tags']['track_total']),
-        track['tags']['album'][0:20],
-        track['tags']['artist'][0:16],
-    )
+def format_track_text(track, flag=None):
+    try:
+        width = os.get_terminal_size()[0]
+    except OSError:
+        width = 80
+    avail = width - 14
+    title_width = round(avail * 0.4)
+    avail = avail - title_width
+    album_width = round(avail * 0.5)
+    artist_width = avail - album_width
+
+    title = track['tags']['title'][0:title_width].ljust(title_width)
+    album = track['tags']['album'][0:album_width].ljust(album_width)
+    artist = track['tags']['artist'][0:artist_width].ljust(artist_width)
+    num = int(track['tags']['track'])
+    tracks = int(track['tags']['track_total'])
+
+    if not flag:
+        flag = '◼'
+        redis = Redis()
+        state = redis.get('state')
+        if state:
+            state = state.decode()
+            if state == 'playing':
+                flag = '▶'
+            elif state == 'paused':
+                flag = '‖'
+    return f'{flag} {title} | {num:02d}/{tracks:02d} {album} | {artist}'
 
 
 @click.command()
@@ -449,9 +474,9 @@ def show_playing():
     redis = Redis()
     track = redis.get('current_track')
     if track:
-        print(format_track_text(json.loads(track.decode()), flag='➡'))
+        print(format_track_text(json.loads(track.decode())))
     else:
-        print('➡ [nothing playing]')
+        print('◼ [nothing playing]')
 
 @click.command()
 def pause():
