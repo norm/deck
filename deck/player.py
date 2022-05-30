@@ -366,11 +366,16 @@ def spin():
 @click.command()
 @click.option('--clear', is_flag=True)
 @click.option('--prepend', is_flag=True)
+@click.option('--remove', is_flag=True)
 @click.argument('tracks', nargs=-1)
-def queue(clear, prepend, tracks):
+def queue(clear, prepend, remove, tracks):
     redis = Redis()
     if clear:
         redis.ltrim('queue', 1, 0)
+    if remove:
+        for file in tracks:
+            track = os.path.realpath(file)
+            redis.lrem('queue', 0, track)
     else:
         if prepend:
             for file in reversed(tracks):

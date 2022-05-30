@@ -35,6 +35,9 @@ class Redis:
     def lrange(self, key, lower, upper):
         return self.redis.lrange(self.key(key), lower, upper)
 
+    def lrem(self, key, count, element):
+        return self.redis.lrem(self.key(key), count, element)
+
     def ltrim(self, key, lower, upper):
         return self.redis.ltrim(self.key(key), lower, upper)
 
