@@ -58,11 +58,14 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
 
     sudo pip install .
 
-    # to play a single track and quit
+    # to play a single track then exit
     deck play track.mp3
 
     # to play indefinitely from the redis queue
     deck spin
+
+    # to make the indefinite player exit
+    deck quit
 
     # to queue up music
     deck queue track.mp3 [...]

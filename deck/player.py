@@ -157,6 +157,8 @@ class Player:
                 self.stop()
             elif command.decode() == 'skip':
                 self.skip()
+            elif command.decode() == 'quit':
+                self.quit()
             else:
                 print('\r\n** unknown command received:', command, end='\r\n')
 
@@ -442,6 +444,12 @@ def previous_track():
 def stop():
     redis = Redis()
     redis.set('command', 'stop')
+
+
+@click.command()
+def quit():
+    redis = Redis()
+    redis.set('command', 'quit')
 
 
 @click.command()
