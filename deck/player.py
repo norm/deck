@@ -6,12 +6,14 @@ Gst.init(None)
 
 import click
 import itertools
+import json
 import os
 from select import select
 import sys
 import termios
 import _thread
 import time
+from tinytag import TinyTag
 import tty
 from deck.redis import Redis
 
@@ -57,8 +59,10 @@ class Player:
         else:
             print("** unknown message type", message.type, end='\r\n')
 
-    def play(self, track):
-        self.play_track(track)
+    def play(self, file):
+        track = os.path.realpath(file)
+        tags = TinyTag.get(track)
+        self.play_track({'file': track, 'tags': tags.as_dict()})
         self.quit()
 
     # FIXME store played tracks (FIFO queue) in redis
@@ -74,8 +78,16 @@ class Player:
             else:
                 track = self.redis.lindex('queue', 0)
                 if track:
+                    track = track.decode()
                     self.redis.lpop('queue')
-                    self.play_track(track.decode())
+                    self.play_track(json.loads(track))
+                    if self.state == 'stopped':
+                        self.redis.lpush('queue', track)
+                        self.redis.delete('current_track')
+                    elif self.state not in ['skipped', 'previous']:
+                        self.redis.lpush('recently_played', track)
+                        self.redis.ltrim('recently_played', 0, 99)
+                        self.redis.delete('current_track')
                 else:
                     char = self.wait_for_key(timeout=0.2)
                     if char:
@@ -91,10 +103,10 @@ class Player:
             self.output_player_state()
 
     def play_track(self, track):
-        if os.path.isfile(track):
-            self.redis.set('current_track', track)
-            self.output_text_state('-- now playing "%s"' % track)
-            self.player.set_property('uri', 'file://' + track)
+        if os.path.isfile(track['file']):
+            self.redis.set('current_track', json.dumps(track))
+            self.output_text_state(format_track_text(track, flag='-'))
+            self.player.set_property('uri', 'file://' + track['file'])
             self.player_state(Gst.State.PLAYING)
             self.playing = True
             while self.playing:
@@ -106,6 +118,7 @@ class Player:
                         self.quit()
                     elif ord(char) == 32:
                         self.pause_or_resume()
+                        self.redis.set('current_track', json.dumps(track))
                     elif char in ['j', 'J']:
                         self.relative_seek(-15)
                     elif char in ['l', 'L']:
@@ -128,13 +141,6 @@ class Player:
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
-        if self.state == 'stopped':
-            self.redis.lpush('queue', track)
-            self.redis.delete('current_track')
-        elif self.state not in ['skipped', 'previous']:
-            self.redis.lpush('recently_played', track)
-            self.redis.ltrim('recently_played', 0, 99)
-            self.redis.delete('current_track')
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -349,6 +355,17 @@ class Player:
         self.loop.quit()
 
 
+def format_track_text(track, flag=' '):
+    return '%s %-26s | %02d/%02d %-20s | %-16s' % (
+        flag,
+        track['tags']['title'][0:26],
+        int(track['tags']['track']),
+        int(track['tags']['track_total']),
+        track['tags']['album'][0:20],
+        track['tags']['artist'][0:16],
+    )
+
+
 @click.command()
 @click.argument('file')
 def play(file):
@@ -381,36 +398,50 @@ def queue(clear, prepend, remove, tracks):
     else:
         if prepend:
             for file in reversed(tracks):
-                redis.lpush('queue', os.path.realpath(file))
+                track = os.path.realpath(file)
+                tags = TinyTag.get(track)
+                redis.lpush(
+                    'queue',
+                    json.dumps({'file': track, 'tags': tags.as_dict()}),
+                )
         else:
             for file in tracks:
-                redis.rpush('queue', os.path.realpath(file))
+                track = os.path.realpath(file)
+                tags = TinyTag.get(track)
+                redis.rpush(
+                    'queue',
+                    json.dumps({'file': track, 'tags': tags.as_dict()}),
+                )
 
 
 @click.command()
 @click.option('--repeat', default=0, show_default=True)
 def show_queue(repeat):
     redis = Redis()
-    for track in redis.lrange('queue', 0, -1):
-        print('  ', track.decode())
+    for entry in redis.lrange('queue', 0, -1):
+        track = json.loads(entry.decode())
+        print(format_track_text(track))
     while repeat:
         time.sleep(repeat)
         os.system('clear')
-        for track in redis.lrange('queue', 0, -1):
-            print('  ', track.decode())
+        for entry in redis.lrange('queue', 0, -1):
+            track = json.loads(entry.decode())
+            print(format_track_text(track))
 
 
 @click.command()
 @click.option('--repeat', default=0, show_default=True)
 def show_previous(repeat):
     redis = Redis()
-    for track in reversed(redis.lrange('recently_played', 0, -1)):
-        print('  ', track.decode())
+    for entry in reversed(redis.lrange('recently_played', 0, -1)):
+        track = json.loads(entry.decode())
+        print(format_track_text(track))
     while repeat:
         time.sleep(repeat)
         os.system('clear')
-        for track in reversed(redis.lrange('recently_played', 0, -1)):
-            print('  ', track.decode())
+        for entry in reversed(redis.lrange('recently_played', 0, -1)):
+            track = json.loads(entry.decode())
+            print(format_track_text(track))
 
 
 @click.command()
@@ -418,9 +449,9 @@ def show_playing():
     redis = Redis()
     track = redis.get('current_track')
     if track:
-        print('**', track.decode())
+        print(format_track_text(json.loads(track.decode()), flag='➡'))
     else:
-        print('** Nothing playing.')
+        print('➡ [nothing playing]')
 
 @click.command()
 def pause():
@@ -459,6 +490,11 @@ def interrupt(tracks):
     track = redis.getdel('current_track')
     if track:
         redis.lpush('queue', track)
-    for track in reversed(tracks):
-        redis.lpush('queue', os.path.realpath(track))
+    for file in reversed(tracks):
+        track = os.path.realpath(file)
+        tags = TinyTag.get(track)
+        redis.lpush(
+            'queue',
+            json.dumps({'file': track, 'tags': tags.as_dict()}),
+        )
     redis.set('command', 'skip')
