@@ -272,10 +272,10 @@ class Player:
         print(text.ljust(79), end='\r\n', flush=True)
 
     def output_player_state(self):
-        # FIXME a terminal wider than 80 chars
         progress_bar_width = 44
+        if os.get_terminal_size()[0] > 80:
+            progress_bar_width = os.get_terminal_size()[0] - 36
 
-        # FIXME a track over an hour long
         duration = self.player.query_duration(Gst.Format.TIME)[1]
         position = self.player.query_position(Gst.Format.TIME)[1]
         if duration < 0 or position < 0:
@@ -314,13 +314,7 @@ class Player:
         # 12345678901234567890123456789012345678901234567890123456789012345678901234567890
         #   ▶  [==========]   00:04 [______|_____________________________________] 00:31
         print(
-            "  %s  [%s]   %s [%s] %s" % (
-                state,
-                volume_bar,
-                position_time,
-                progress_bar,
-                duration_time,
-            ),
+            f"  {state}  [{volume_bar}]   {position_time} [{progress_bar}] {duration_time}",
             end='\r',
             flush=True,
         )
@@ -344,11 +338,7 @@ class Player:
     def minutes_seconds(self, t):
         s,ns = divmod(t, 1000000000)
         m,s = divmod(s, 60)
-        if m < 60:
-            return "%02i:%02i" %(m,s)
-        else:
-            h,m = divmod(m, 60)
-            return "%i:%02i:%02i" %(h,m,s)
+        return "%02i:%02i" % (m,s)
 
     def quit(self):
         termios.tcsetattr(
