@@ -65,7 +65,6 @@ class Player:
         self.play_track({'file': track, 'tags': tags.as_dict()})
         self.quit()
 
-    # FIXME store played tracks (FIFO queue) in redis
     def spin(self):
         print('[Space]:pause/play  [L]:skip fwd    [J]:skip back  [1234567890]:position', end='\r\n')
         print('[N]:next track      [P]:prev track  [S]:stop       [^C]:quit', end='\r\n')
