@@ -1,5 +1,6 @@
 import click
 from deck.player import (
+    interrupt,
     next_track,
     pause,
     play,
@@ -17,6 +18,7 @@ from deck.player import (
 def cli():
     pass
 
+cli.add_command(interrupt)
 cli.add_command(pause)
 cli.add_command(next_track, name='next')
 cli.add_command(play)

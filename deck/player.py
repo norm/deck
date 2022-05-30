@@ -128,7 +128,10 @@ class Player:
                 self.output_player_state()
         else:
             self.output_text_state('** no file "%s"' % track)
-        if self.state not in ['stopped', 'previous']:
+        if self.state == 'stopped':
+            self.redis.lpush('queue', track)
+            self.redis.delete('current_track')
+        elif self.state not in ['skipped', 'previous']:
             self.redis.lpush('recently_played', track)
             self.redis.ltrim('recently_played', 0, 99)
             self.redis.delete('current_track')
@@ -152,6 +155,8 @@ class Player:
                 self.previous_track()
             elif command.decode() == 'stop':
                 self.stop()
+            elif command.decode() == 'skip':
+                self.skip()
             else:
                 print('\r\n** unknown command received:', command, end='\r\n')
 
@@ -166,6 +171,11 @@ class Player:
     def stop(self):
         self.player.set_state(Gst.State.NULL)
         self.state = 'stopped'
+        self.playing = False
+
+    def skip(self):
+        self.player.set_state(Gst.State.NULL)
+        self.state = 'skipped'
         self.playing = False
 
     def next_track(self):
@@ -427,3 +437,15 @@ def previous_track():
 def stop():
     redis = Redis()
     redis.set('command', 'stop')
+
+
+@click.command()
+@click.argument('tracks', nargs=-1)
+def interrupt(tracks):
+    redis = Redis()
+    track = redis.getdel('current_track')
+    if track:
+        redis.lpush('queue', track)
+    for track in reversed(tracks):
+        redis.lpush('queue', os.path.realpath(track))
+    redis.set('command', 'skip')
