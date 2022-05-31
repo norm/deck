@@ -7,6 +7,7 @@ Gst.init(None)
 import click
 import itertools
 import json
+from mimetypes import guess_type
 import os
 from select import select
 import sys
@@ -350,6 +351,45 @@ class Player:
         self.loop.quit()
 
 
+def queue_file(file, prepend=False):
+    redis = Redis()
+    guessed_type = guess_type(file)[0]
+    if guessed_type == 'audio/mpegurl':
+        queue_playlist(file, prepend)
+    elif guessed_type.startswith('audio/'):
+        track = os.path.realpath(file)
+        tags = TinyTag.get(track)
+        if prepend:
+            redis.lpush(
+                'queue',
+                json.dumps({'file': track, 'tags': tags.as_dict()}),
+            )
+        else:
+            redis.rpush(
+                'queue',
+                json.dumps({'file': track, 'tags': tags.as_dict()}),
+            )
+    else:
+        print('** UNKNOWN FILE TYPE', file)
+
+
+def queue_playlist(file, prepend=False):
+    tracks = []
+    with open(file) as playlist:
+        for line in playlist.readlines():
+            if line.startswith('#'):
+                continue
+            tracks.append(line.strip())
+    queue_files(tracks, prepend)
+
+
+def queue_files(files, prepend=False):
+    if prepend:
+        files = reversed(files)
+    for file in files:
+        queue_file(file, prepend)
+
+
 def format_track_text(track, flag=None):
     try:
         width = os.get_terminal_size()[0]
@@ -410,22 +450,7 @@ def queue(clear, prepend, remove, tracks):
             track = os.path.realpath(file)
             redis.lrem('queue', 0, track)
     else:
-        if prepend:
-            for file in reversed(tracks):
-                track = os.path.realpath(file)
-                tags = TinyTag.get(track)
-                redis.lpush(
-                    'queue',
-                    json.dumps({'file': track, 'tags': tags.as_dict()}),
-                )
-        else:
-            for file in tracks:
-                track = os.path.realpath(file)
-                tags = TinyTag.get(track)
-                redis.rpush(
-                    'queue',
-                    json.dumps({'file': track, 'tags': tags.as_dict()}),
-                )
+        queue_files(tracks, prepend)
 
 
 def show_queued_tracks(count=-1):
