@@ -411,11 +411,24 @@ def format_track_text(track, flag=None):
     album_width = round(avail * 0.5)
     artist_width = avail - album_width
 
-    title = track['tags']['title'][0:title_width].ljust(title_width)
-    album = track['tags']['album'][0:album_width].ljust(album_width)
-    artist = track['tags']['artist'][0:artist_width].ljust(artist_width)
-    num = int(track['tags']['track'])
-    tracks = int(track['tags']['track_total'])
+    try:
+        title = track['tags']['title'][0:title_width].ljust(title_width)
+    except:
+        title = 'Unknown Track'
+    try:
+        album = track['tags']['album'][0:album_width].ljust(album_width)
+    except:
+        album = 'Unknown Album'
+    try:
+        artist = track['tags']['artist'][0:artist_width].ljust(artist_width)
+    except:
+        artist = 'Unknown Artist'
+    try:
+        num = int(track['tags']['track'])
+        tracks = int(track['tags']['track_total'])
+    except:
+        num = 1
+        tracks = 1
 
     if not flag:
         flag = '◼'
