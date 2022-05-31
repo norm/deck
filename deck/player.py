@@ -383,11 +383,21 @@ def queue_playlist(file, prepend=False):
     queue_files(tracks, prepend)
 
 
+def queue_directory(dir, prepend=False):
+    for root, dirs, files in os.walk(dir, topdown=True):
+        dirs.sort(reverse=prepend)
+        files.sort()
+        queue_files([os.path.join(root, file) for file in files], prepend)
+
+
 def queue_files(files, prepend=False):
     if prepend:
         files = reversed(files)
     for file in files:
-        queue_file(file, prepend)
+        if os.path.isdir(file):
+            queue_directory(file, prepend)
+        else:
+            queue_file(file, prepend)
 
 
 def format_track_text(track, flag=None):
