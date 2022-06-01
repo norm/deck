@@ -305,7 +305,7 @@ class Player:
             progress_bar = '_' * progress_bar_width
         else:
             progress = int((position / duration) * progress_bar_width)
-            progress_bar = (('_' * (progress-1)) + '|').ljust(progress_bar_width, '_')
+            progress_bar = (('_' * (progress-1)) + 'V').ljust(progress_bar_width, '_')
             position_time = self.minutes_seconds(position)
             duration_time = self.minutes_seconds(duration)
 
@@ -464,6 +464,12 @@ def queue_files(files, prepend=False):
             queue_file(file, prepend)
 
 
+def shorten(text, target):
+    if len(text) > target:
+        text = text[0:target-1] + '…'
+    return text.ljust(target)
+
+
 def format_track_text(track, flag=None):
     try:
         width = os.get_terminal_size()[0]
@@ -476,15 +482,15 @@ def format_track_text(track, flag=None):
     artist_width = avail - album_width
 
     try:
-        title = track['tags']['title'][0:title_width].ljust(title_width)
+        title = shorten(track['tags']['title'], title_width)
     except:
         title = 'Unknown Track'
     try:
-        album = track['tags']['album'][0:album_width].ljust(album_width)
+        album = shorten(track['tags']['album'], album_width)
     except:
         album = 'Unknown Album'
     try:
-        artist = track['tags']['artist'][0:artist_width].ljust(artist_width)
+        artist = shorten(track['tags']['artist'], artist_width)
     except:
         artist = 'Unknown Artist'
     try:
