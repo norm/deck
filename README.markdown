@@ -83,6 +83,9 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
     # ...or directories (to traverse and queue all music below)
     deck queue Barenaked\ Ladies/
 
+    # ...or by listing files/playlists/dirs to stdin
+    echo track.mp3 | deck queue -
+
     # to remove tracks from the queue
     deck queue --remove track.mp3 [...]
 

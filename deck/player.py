@@ -455,6 +455,8 @@ def queue_directory(dir, prepend=False):
 
 
 def queue_files(files, prepend=False):
+    if files[0] == '-':
+        files = [ line.rstrip() for line in sys.stdin ]
     if prepend:
         files = reversed(files)
     for file in files:
@@ -546,7 +548,8 @@ def queue(clear, prepend, remove, tracks):
             track = os.path.realpath(file)
             redis.lrem('queue', 0, track)
     else:
-        queue_files(tracks, prepend)
+        if tracks:
+            queue_files(tracks, prepend)
 
 
 def show_queued_tracks(count=-1):
