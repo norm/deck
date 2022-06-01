@@ -67,9 +67,9 @@ class Player:
         self.quit()
 
     def spin(self):
-        print('[Space]:pause/play  [L]:skip fwd    [J]:skip back  [1234567890]:position', end='\r\n')
-        print('[N]:next track      [P]:prev track  [S]:stop       [^C]:quit', end='\r\n')
-        print('[Q/+]:vol up        [A/-]:vol down  [M]:mute', end='\r\n\n')
+        print('[Space]:pause/play  [L]:fast-fwd    [J]:rewind      [1234567890]:position', end='\r\n')
+        print('[N]:next track      [P]:prev track  [X]:skip track  [S]:stop', end='\r\n')
+        print('[Q/+]:vol up        [A/-]:vol down  [M]:mute        [^C]:quit', end='\r\n\n')
         while True:
             if self.state == 'stopped':
                 char = self.wait_for_key(timeout=0.2)
@@ -81,10 +81,10 @@ class Player:
                     track = track.decode()
                     self.redis.lpop('queue')
                     self.play_track(json.loads(track))
-                    if self.state == 'stopped':
+                    if self.get_state() == 'stopped':
                         self.redis.lpush('queue', track)
                         self.redis.delete('current_track')
-                    elif self.state not in ['skipped', 'previous']:
+                    elif self.get_state() not in ['skipped', 'previous']:
                         self.redis.lpush('recently_played', track)
                         self.redis.ltrim('recently_played', 0, 99)
                         self.redis.delete('current_track')
@@ -131,6 +131,8 @@ class Player:
                         self.toggle_mute()
                     elif char in ['s', 'S']:
                         self.stop()
+                    elif char in ['x', 'X']:
+                        self.skip()
                     elif char in ['n', 'N']:
                         self.next_track()
                     elif char in ['p', 'P']:
@@ -199,15 +201,24 @@ class Player:
     def player_state(self, state, store=None):
         self.player.set_state(state)
         if not store:
-            store = state
-        self.state = store
-        if state == Gst.State.PLAYING:
-            store = 'playing'
-        if state == Gst.State.PAUSED:
-            store = 'paused'
-        if state == Gst.State.NULL:
-            store = 'stopped'
+            self.state = state
+            if state == Gst.State.PLAYING:
+                store = 'playing'
+            elif state == Gst.State.PAUSED:
+                store = 'paused'
+            elif state == Gst.State.NULL:
+                store = 'null'
+            else:
+                print('\r\n** unknown state to store', state, end='\r\n')
+        else:
+            self.state = store
         self.redis.set('state', store)
+
+    def get_state(self):
+        state = self.redis.get('state')
+        if state:
+            return state.decode()
+        return None
 
     def relative_seek(self, amount=0, show_state=True):
         position = self.player.query_position(Gst.Format.TIME)[1]
