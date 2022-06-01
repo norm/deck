@@ -12,7 +12,7 @@ import os
 from select import select
 import sys
 import termios
-import _thread
+import threading
 import time
 from tinytag import TinyTag
 import tty
@@ -349,6 +349,7 @@ class Player:
         )
         print()
         self.loop.quit()
+        sys.exit()
 
 
 def queue_file(file, prepend=False):
@@ -447,15 +448,16 @@ def format_track_text(track, flag=None):
 @click.argument('file')
 def play(file):
     loop = GLib.MainLoop()
-    mainclass = Player(loop=loop)
-    _thread.start_new_thread(mainclass.play, (file,))
+    player = Player(loop=loop)
+    threading.Thread(target=player.play, args=(file,)).start()
     loop.run()
+
 
 @click.command()
 def spin():
     loop = GLib.MainLoop()
-    mainclass = Player(loop=loop)
-    _thread.start_new_thread(mainclass.spin, ())
+    player = Player(loop=loop)
+    threading.Thread(target=player.spin).start()
     loop.run()
 
 
