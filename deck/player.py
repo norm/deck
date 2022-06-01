@@ -5,10 +5,12 @@ from gi.repository import GLib, GObject, Gst
 Gst.init(None)
 
 import click
+from datetime import datetime
 import itertools
 import json
 from mimetypes import guess_type
 import os
+import pylast
 from select import select
 import sys
 import termios
@@ -83,11 +85,9 @@ class Player:
                     self.play_track(json.loads(track))
                     if self.get_state() == 'stopped':
                         self.redis.lpush('queue', track)
-                        self.redis.delete('current_track')
                     elif self.get_state() not in ['skipped', 'previous']:
                         self.redis.lpush('recently_played', track)
                         self.redis.ltrim('recently_played', 0, 99)
-                        self.redis.delete('current_track')
                 else:
                     char = self.wait_for_key(timeout=0.2)
                     if char:
@@ -108,6 +108,7 @@ class Player:
             self.output_text_state(format_track_text(track, flag='-'))
             self.player.set_property('uri', 'file://' + track['file'])
             self.player_state(Gst.State.PLAYING)
+            started = datetime.now().timestamp()
             self.playing = True
             while self.playing:
                 # check for keypress with 1/10th of a second timeout
@@ -141,6 +142,9 @@ class Player:
                         self.set_position(char)
                 self.check_for_command()
                 self.output_player_state()
+            self.redis.delete('current_track')
+            if self.get_state() != 'skipped':
+                self.scrobble(track, started)
         else:
             self.output_text_state('** no file "%s"' % track)
 
@@ -179,19 +183,23 @@ class Player:
         time.sleep(0.1)
 
     def stop(self):
+        self.redis.delete('current_track')
         self.player_state(Gst.State.NULL, 'stopped')
         self.playing = False
 
     def skip(self):
+        self.redis.delete('current_track')
         self.player_state(Gst.State.NULL, 'skipped')
         self.playing = False
 
     def next_track(self):
+        self.redis.delete('current_track')
         self.player_state(Gst.State.PAUSED)
         self.player_state(Gst.State.NULL)
         self.playing = False
 
     def previous_track(self):
+        self.redis.delete('current_track')
         track = self.redis.lpop('recently_played')
         self.redis.lpush('queue', track)
         self.player_state(Gst.State.PAUSED)
@@ -318,7 +326,7 @@ class Player:
             state = '←'
         elif self.state == 'stopped':
             state = '◼'
-        elif self.state == Gst.State.NULL:
+        elif self.state in [Gst.State.NULL, 'skipped']:
             state = next(self.spinner)
         else:
             state = '?'
@@ -330,6 +338,10 @@ class Player:
             end='\r',
             flush=True,
         )
+
+    def scrobble(self, track, started):
+        track['started'] = started
+        self.redis.rpush('scrobble_queue', json.dumps(track))
 
     def restore_state(self):
         volume = self.redis.get('volume')
@@ -361,6 +373,46 @@ class Player:
         print()
         self.loop.quit()
         sys.exit()
+
+
+class Scrobbler:
+    def scrobble_plays(self):
+        redis = Redis()
+        try:
+            lastfm = pylast.LastFMNetwork(
+                api_key = os.environ['LASTFM_KEY'],
+                api_secret = os.environ['LASTFM_SECRET'],
+                username = os.environ['LASTFM_USER'],
+                password_hash = pylast.md5(os.environ['LASTFM_PASS']),
+            )
+        except KeyError:
+            print('** LASTFM environment vars missing; scrobbling disabled.\n')
+            lastfm = None
+
+        if lastfm:
+            current_track = None
+            while True:
+                current = redis.get('current_track')
+                if current:
+                    track = json.loads(current.decode())
+                    if track != current_track:
+                        current_track = track
+                        lastfm.update_now_playing(
+                            album = track['tags']['album'],
+                            artist = track['tags']['artist'],
+                            title = track['tags']['title'],
+                        )
+                scrobble = redis.lpop('scrobble_queue')
+                if scrobble:
+                    track = json.loads(scrobble)
+                    lastfm.scrobble(
+                        album = track['tags']['album'],
+                        artist = track['tags']['artist'],
+                        title = track['tags']['title'],
+                        # FIXME mbid if known
+                        timestamp = track['started'],
+                    )
+                time.sleep(1)
 
 
 def queue_file(file, prepend=False):
@@ -467,6 +519,8 @@ def play(file):
 @click.command()
 def spin():
     loop = GLib.MainLoop()
+    scrobbler = Scrobbler()
+    threading.Thread(target=scrobbler.scrobble_plays, daemon=True).start()
     player = Player(loop=loop)
     threading.Thread(target=player.spin).start()
     loop.run()

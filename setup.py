@@ -6,6 +6,7 @@ setup(
     py_modules=['deck'],
     install_requires=[
         'Click',
+        'pylast',
         'tinytag',
     ],
     entry_points={
