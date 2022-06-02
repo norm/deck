@@ -78,9 +78,7 @@ class Player(PlayerErrors):
         self.quit()
 
     def spin(self):
-        print('[Space]:pause/play  [L]:fast-fwd    [J]:rewind      [1234567890]:position', end='\r\n')
-        print('[N]:next track      [P]:prev track  [X]:skip track  [S]:stop', end='\r\n')
-        print('[Q/+]:vol up        [A/-]:vol down  [M]:mute        [^C]:quit', end='\r\n\n')
+        self.print_controls()
         while True:
             if self.state == 'stopped':
                 char = self.wait_for_key(timeout=0.2)
@@ -110,6 +108,12 @@ class Player(PlayerErrors):
                             self.toggle_mute()
             self.check_for_command()
             self.output_player_state()
+
+    def print_controls(self):
+        print('[Space]:pause/play  [L]:fast-fwd    [J]:rewind      [1..0]:position', end='\r\n')
+        print('[Q/+]:vol up        [A/-]:vol down  [M]:mute        [!..)]:volume', end='\r\n')
+        print('[N]:next track      [P]:prev track  [X]:skip track  [S]:stop         [V]:vacate', end='\r\n')
+        print('[^C]:quit player', end='\r\n\n')
 
     def play_track(self, track):
         if os.path.isfile(track['file']):
@@ -143,12 +147,38 @@ class Player(PlayerErrors):
                         self.stop()
                     elif char in ['x', 'X']:
                         self.skip()
+                    elif char in ['v', 'V']:
+                        self.clear_queue()
                     elif char in ['n', 'N']:
                         self.next_track()
                     elif char in ['p', 'P']:
                         self.previous_track()
                     elif ord(char) in range(48, 58):
                         self.set_position(char)
+                    elif char == '!':
+                        self.set_volume(100)
+                    elif char == '"':
+                        self.set_volume(200)
+                    elif char == '£':
+                        self.set_volume(300)
+                    elif char == '$':
+                        self.set_volume(400)
+                    elif char == '%':
+                        self.set_volume(500)
+                    elif char == '^':
+                        self.set_volume(600)
+                    elif char == '&':
+                        self.set_volume(700)
+                    elif char == '*':
+                        self.set_volume(800)
+                    elif char == '(':
+                        self.set_volume(900)
+                    elif char == ')':
+                        self.set_volume(1000)
+                    elif ord(char) == 12:
+                        os.system('clear')
+                        self.print_controls()
+                        self.output_text_state(format_track_text(track, flag='-'))
                 self.check_for_command()
                 self.output_player_state()
             self.redis.delete('current_track')
@@ -162,7 +192,11 @@ class Player(PlayerErrors):
         ready, _, _ = select([sys.stdin], [], [], timeout)
         for stream in ready:
             if stream == sys.stdin:
-                char = sys.stdin.read(1)
+                try:
+                    char = sys.stdin.read(1)
+                except UnicodeDecodeError:
+                    # cheat to save working out how to do this properly for now
+                    char = '£'
         return char
 
     def check_for_command(self):
@@ -214,6 +248,10 @@ class Player(PlayerErrors):
         self.player_state(Gst.State.PAUSED)
         self.player_state(Gst.State.NULL, 'previous')
         self.playing = False
+
+    def clear_queue(self):
+        self.redis.ltrim('queue', 1, 0)
+        self.skip()
 
     def player_state(self, state, store=None):
         self.player.set_state(state)
