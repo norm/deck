@@ -11,6 +11,7 @@ from deck.player import (
     show_previous,
     show_queue,
     show_summary,
+    skip,
     spin,
     stop,
 )
@@ -31,6 +32,7 @@ cli.add_command(show_playing)
 cli.add_command(show_previous)
 cli.add_command(show_queue)
 cli.add_command(show_summary)
+cli.add_command(skip)
 cli.add_command(spin)
 cli.add_command(stop)
 

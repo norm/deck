@@ -5,12 +5,14 @@ from gi.repository import GLib, GObject, Gst
 Gst.init(None)
 
 import click
-from datetime import datetime
+from datetime import datetime, timedelta
 import itertools
 import json
 from mimetypes import guess_type
 import os
+from lib.pn532 import *
 import pylast
+import RPi.GPIO as GPIO
 from select import select
 import sys
 import termios
@@ -21,7 +23,13 @@ import tty
 from deck.redis import Redis
 
 
-class Player:
+class PlayerErrors:
+    def error(self, text):
+        width = os.get_terminal_size()[0]
+        print('\r**', text.ljust(width - 1), end='\r\n')
+
+
+class Player(PlayerErrors):
     def __init__(self, loop):
         self.player = Gst.ElementFactory.make('playbin', 'player')
         self.bus = self.player.get_bus()
@@ -46,7 +54,7 @@ class Player:
         elif message.type == Gst.MessageType.ERROR:
             self.player_state(Gst.State.NULL)
             err, debug = message.parse_error()
-            print('** error:', err, debug, end='\r\n')
+            self.error('error "%s" "%s"' % (err, debug))
             self.playing = False
         elif message.type in [
             Gst.MessageType.ASYNC_DONE,
@@ -60,7 +68,7 @@ class Player:
         ]:
             pass
         else:
-            print("** unknown message type", message.type, end='\r\n')
+            self.error('unknown message type "%s"' % message.type)
 
     def play(self, file):
         track = os.path.realpath(file)
@@ -146,7 +154,7 @@ class Player:
             if self.get_state() != 'skipped':
                 self.scrobble(track, started)
         else:
-            self.output_text_state('** no file "%s"' % track)
+            self.output_text_state('** missing file "%s"' % track)
 
     def wait_for_key(self, timeout=1):
         char = None
@@ -172,7 +180,7 @@ class Player:
             elif command.decode() == 'quit':
                 self.quit()
             else:
-                print('\r\n** unknown command received:', command, end='\r\n')
+                self.error('unknown command "%s" received' % command)
 
     def pause_or_resume(self):
         if self.state in [Gst.State.PLAYING, 'seek_forwards', 'seek_backwards']:
@@ -217,7 +225,7 @@ class Player:
             elif state == Gst.State.NULL:
                 store = 'null'
             else:
-                print('\r\n** unknown state to store', state, end='\r\n')
+                self.error('unknown state "%s" to store' % state)
         else:
             self.state = store
         self.redis.set('state', store)
@@ -415,26 +423,74 @@ class Scrobbler:
                 time.sleep(1)
 
 
+class NFCReader(PlayerErrors):
+    def __init__(self):
+        try:
+            self.pn532 = PN532_UART(debug=False, reset=20)
+            self.pn532.SAM_configuration()
+            self.uart_found = True
+        except:
+            self.error('No NFC reader found')
+            self.uart_found = False
+        GPIO.cleanup()
+
+    def listen(self):
+        if not self.uart_found:
+            return
+
+        redis = Redis()
+        last = {}
+        while True:
+            try:
+                uid = self.pn532.read_passive_target(timeout=0.5)
+            except RuntimeError as e:
+                if 'Did not receive expected ACK' not in str(e):
+                    self.error('NFC: %s' % e)
+                uid = None
+
+            if uid:
+                playlist = 'nfc/%s.m3u' % bytes.hex(uid)
+                try:
+                    # don't retrigger from the same NFC (it is "seen" multiple
+                    # times in quick succession if not moved away quickly)
+                    if last[playlist] + timedelta(seconds=10) > datetime.now():
+                        continue
+                except KeyError:
+                    pass
+                clear_queue()
+                skip_current_track()
+                queue_file(playlist)
+                last[playlist] = datetime.now()
+
+
+def clear_queue():
+    redis = Redis()
+    redis.ltrim('queue', 1, 0)
+
+
 def queue_file(file, prepend=False):
     redis = Redis()
-    guessed_type = guess_type(file)[0]
-    if guessed_type == 'audio/mpegurl':
-        queue_playlist(file, prepend)
-    elif guessed_type.startswith('audio/'):
-        track = os.path.realpath(file)
-        tags = TinyTag.get(track)
-        if prepend:
-            redis.lpush(
-                'queue',
-                json.dumps({'file': track, 'tags': tags.as_dict()}),
-            )
+    if os.path.exists(file):
+        guessed_type = guess_type(file)[0]
+        if guessed_type == 'audio/mpegurl':
+            queue_playlist(file, prepend)
+        elif guessed_type.startswith('audio/'):
+            track = os.path.realpath(file)
+            tags = TinyTag.get(track)
+            if prepend:
+                redis.lpush(
+                    'queue',
+                    json.dumps({'file': track, 'tags': tags.as_dict()}),
+                )
+            else:
+                redis.rpush(
+                    'queue',
+                    json.dumps({'file': track, 'tags': tags.as_dict()}),
+                )
         else:
-            redis.rpush(
-                'queue',
-                json.dumps({'file': track, 'tags': tags.as_dict()}),
-            )
+            PlayerErrors().error('UNKNOWN FILE TYPE "%"' % file)
     else:
-        print('** UNKNOWN FILE TYPE', file)
+        PlayerErrors().error('NO FILE "%s"' % file)
 
 
 def queue_playlist(file, prepend=False):
@@ -529,6 +585,8 @@ def spin():
     loop = GLib.MainLoop()
     scrobbler = Scrobbler()
     threading.Thread(target=scrobbler.scrobble_plays, daemon=True).start()
+    reader = NFCReader()
+    threading.Thread(target=reader.listen, daemon=True).start()
     player = Player(loop=loop)
     threading.Thread(target=player.spin).start()
     loop.run()
@@ -542,7 +600,7 @@ def spin():
 def queue(clear, prepend, remove, tracks):
     redis = Redis()
     if clear:
-        redis.ltrim('queue', 1, 0)
+        clear_queue()
     if remove:
         for file in tracks:
             track = os.path.realpath(file)
@@ -626,6 +684,16 @@ def show_summary(repeat):
 def pause():
     redis = Redis()
     redis.set('command', 'pause')
+
+
+def skip_current_track():
+    redis = Redis()
+    redis.set('command', 'skip')
+
+
+@click.command()
+def skip():
+    skip_current_track()
 
 
 @click.command()

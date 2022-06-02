@@ -53,6 +53,16 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
         python3-gst-1.0 \
         redis
 
+    # if using the NFC HAT to trigger music, first configure jumpers
+    # on it to communicate via UART:
+    # https://www.raspberrypi.com/news/read-rfid-and-nfc-tokens-with-raspberry-pi-hackspace-37/
+    sudo raspi-config
+        # Interface Options -> Serial Interface
+        # Login to console: NO
+        # Enable: YES
+    # ...or...
+    # /boot/config.txt: set "enable_uart=1"
+    # /boot/cmdline.txt: remove "console=serial0,115200"
 
 ## Usage
 
@@ -102,6 +112,7 @@ Minimum install to get music files playing on Raspberry Pi (raspbian):
     deck pause
     deck next
     deck previous
+    deck skip
     deck stop
 
     # monitor previous, current, and queued tracks
