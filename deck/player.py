@@ -6,6 +6,7 @@ Gst.init(None)
 
 import click
 from datetime import datetime, timedelta
+import httpcore
 import itertools
 import json
 from mimetypes import guess_type
@@ -383,21 +384,21 @@ class Player(PlayerErrors):
         sys.exit()
 
 
-class Scrobbler:
+class Scrobbler(PlayerErrors):
     def scrobble_plays(self):
         redis = Redis()
         try:
-            lastfm = pylast.LastFMNetwork(
+            self.lastfm = pylast.LastFMNetwork(
                 api_key = os.environ['LASTFM_KEY'],
                 api_secret = os.environ['LASTFM_SECRET'],
                 username = os.environ['LASTFM_USER'],
                 password_hash = pylast.md5(os.environ['LASTFM_PASS']),
             )
         except KeyError:
-            print('** LASTFM environment vars missing; scrobbling disabled.\n')
-            lastfm = None
+            self.error('LASTFM environment vars missing; scrobbling disabled.')
+            self.lastfm = None
 
-        if lastfm:
+        if self.lastfm:
             current_track = None
             while True:
                 current = redis.get('current_track')
@@ -405,22 +406,52 @@ class Scrobbler:
                     track = json.loads(current.decode())
                     if track != current_track:
                         current_track = track
-                        lastfm.update_now_playing(
-                            album = track['tags']['album'],
-                            artist = track['tags']['artist'],
-                            title = track['tags']['title'],
-                        )
-                scrobble = redis.lpop('scrobble_queue')
+                        self.scrobble_current(track)
+                scrobble = redis.lindex('scrobble_queue', 0)
                 if scrobble:
                     track = json.loads(scrobble)
-                    lastfm.scrobble(
-                        album = track['tags']['album'],
-                        artist = track['tags']['artist'],
-                        title = track['tags']['title'],
-                        # FIXME mbid if known
-                        timestamp = track['started'],
-                    )
+                    self.scrobble_played(track)
+                    redis.lpop('scrobble_queue')
                 time.sleep(1)
+
+    def scrobble_current(self, track):
+        attempts = 3
+        while attempts:
+            try:
+                self.lastfm.update_now_playing(
+                    album = track['tags']['album'],
+                    artist = track['tags']['artist'],
+                    title = track['tags']['title'],
+                )
+                attempts = 0
+            except httpcore.ConnectError as e:
+                if e.errno == -3:
+                    # temp failure, retry
+                    time.sleep(5)
+                    attempts = attempts - 1
+                else:
+                    raise
+
+    def scrobble_played(self, track):
+        attempts = 3
+        while attempts:
+            try:
+                self.lastfm.scrobble(
+                    album = track['tags']['album'],
+                    artist = track['tags']['artist'],
+                    title = track['tags']['title'],
+                    # FIXME mbid if known
+                    timestamp = track['started'],
+                )
+                attempts = 0
+            except httpcore.ConnectError as e:
+                # FIXME account for other network failures
+                if e.errno == -3:
+                    # temp failure, retry
+                    time.sleep(5)
+                    attempts = attempts - 1
+                else:
+                    raise
 
 
 class NFCReader(PlayerErrors):
